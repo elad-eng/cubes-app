@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קיובס | דיווח שטח</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">🏗️ קיובס</div>
+  <nav class="topbar-nav">
+    <a class="nav-btn" href="app.html">🎯 פיקוד יומי</a>
+    <a class="nav-btn" href="projects.html">🏗️ פרויקטים</a>
+    <a class="nav-btn" href="workers.html">👷 מתקינים</a>
+    <a class="nav-btn" href="alerts.html">🚨 התראות</a>
+    <a class="nav-btn active" href="update.html">📝 דיווח שטח</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="user-badge" id="userEmail"></span>
+    <button class="logout-btn" onclick="signOut()">יציאה</button>
+  </div>
+</div>
+
+<div class="page" style="max-width:680px">
+  <div class="card">
+    <h3>📝 דיווח עדכון יומי מהשטח</h3>
+
+    <div class="form-group">
+      <label>פרויקט</label>
+      <select id="projectSelect">
+        <option value="">— בחר פרויקט —</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>תאריך</label>
+      <input type="date" id="updateDate">
+    </div>
+
+    <div class="form-group">
+      <label>תיאור העדכון</label>
+      <textarea id="content" rows="5" placeholder="מה קרה היום באתר? מה בוצע? מה עדיין פתוח?"></textarea>
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label>מספר עובדים שהיו באתר</label>
+        <input type="number" id="workersPresent" min="0" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>בעיות / חסמים</label>
+        <input type="text" id="issues" placeholder="חומר חסר, פיגומים...">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="needsReinforce" style="width:auto;accent-color:var(--accent)">
+        נדרש תגבור בפרויקט זה
+      </label>
+    </div>
+
+    <div class="form-group" id="reinforceDetail" style="display:none">
+      <label>פרט את צרכי התגבור</label>
+      <input type="text" id="reinforceText" placeholder="כמה עובדים? לכמה זמן? איזה תפקיד?">
+    </div>
+
+    <div id="successMsg" style="display:none;background:#1a3a2a;border:1px solid var(--green);color:var(--green);padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:700">
+      ✓ הדיווח נשלח בהצלחה!
+    </div>
+    <div id="errMsg" class="error-msg" style="display:none"></div>
+
+    <button class="btn btn-primary" onclick="submitUpdate()">שלח דיווח</button>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { window.location.href = 'index.html'; return; }
+  currentUser = session.user;
+  document.getElementById('userEmail').textContent = currentUser.email;
+
+  // תאריך היום
+  document.getElementById('updateDate').value = new Date().toISOString().split('T')[0];
+
+  // טען פרויקטים
+  const { data: projects } = await db.from('projects').select('id, name, manager').eq('is_active', true).order('name');
+  const sel = document.getElementById('projectSelect');
+  (projects || []).forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.dataset.name = p.name;
+    opt.dataset.manager = p.manager || '';
+    opt.textContent = p.name + (p.manager ? ' — ' + p.manager.split(' - ')[0] : '');
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById('needsReinforce').addEventListener('change', e => {
+  document.getElementById('reinforceDetail').style.display = e.target.checked ? 'block' : 'none';
+});
+
+async function submitUpdate() {
+  const projectSel = document.getElementById('projectSelect');
+  const projectId = projectSel.value;
+  const projectName = projectSel.options[projectSel.selectedIndex]?.dataset?.name || '';
+  const content = document.getElementById('content').value.trim();
+  const errEl = document.getElementById('errMsg');
+  errEl.style.display = 'none';
+
+  if (!projectId) { errEl.textContent = 'נא לבחור פרויקט'; errEl.style.display = 'block'; return; }
+  if (!content) { errEl.textContent = 'נא לרשום תיאור עדכון'; errEl.style.display = 'block'; return; }
+
+  const needsReinforce = document.getElementById('needsReinforce').checked;
+
+  const { error } = await db.from('field_updates').insert({
+    project_id: projectId,
+    project_name: projectName,
+    manager: currentUser.email,
+    update_date: document.getElementById('updateDate').value,
+    content,
+    workers_present: parseInt(document.getElementById('workersPresent').value) || 0,
+    issues: document.getElementById('issues').value.trim(),
+    needs_reinforcement: needsReinforce,
+    reinforcement_details: needsReinforce ? document.getElementById('reinforceText').value : ''
+  });
+
+  if (error) { errEl.textContent = 'שגיאה: ' + error.message; errEl.style.display = 'block'; return; }
+
+  document.getElementById('successMsg').style.display = 'block';
+  setTimeout(() => document.getElementById('successMsg').style.display = 'none', 4000);
+  document.getElementById('content').value = '';
+  document.getElementById('issues').value = '';
+  document.getElementById('workersPresent').value = '';
+  document.getElementById('needsReinforce').checked = false;
+  document.getElementById('reinforceDetail').style.display = 'none';
+}
+
+async function signOut() { await db.auth.signOut(); window.location.href = 'index.html'; }
+init();
+</script>
+</body>
+</html>

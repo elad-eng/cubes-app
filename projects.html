@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קיובס | פרויקטים</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-brand">🏗️ קיובס</div>
+  <nav class="topbar-nav">
+    <a class="nav-btn" href="app.html">🎯 פיקוד יומי</a>
+    <a class="nav-btn active" href="projects.html">🏗️ פרויקטים</a>
+    <a class="nav-btn" href="workers.html">👷 מתקינים</a>
+    <a class="nav-btn" href="alerts.html">🚨 התראות</a>
+    <a class="nav-btn" href="update.html">📝 דיווח שטח</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="user-badge" id="userEmail"></span>
+    <button class="logout-btn" onclick="signOut()">יציאה</button>
+  </div>
+</div>
+<div class="page">
+  <div class="kpi-row">
+    <div class="kpi-card" style="--accent-color:#4ade80"><div class="kpi-label">בביצוע</div><div class="kpi-value" id="k1">—</div></div>
+    <div class="kpi-card" style="--accent-color:#fbbf24"><div class="kpi-label">בעצירה</div><div class="kpi-value" id="k2">—</div></div>
+    <div class="kpi-card" style="--accent-color:#60a5fa"><div class="kpi-label">לקראת ביצוע</div><div class="kpi-value" id="k3">—</div></div>
+    <div class="kpi-card" style="--accent-color:#86efac"><div class="kpi-label">לקראת סיום</div><div class="kpi-value" id="k4">—</div></div>
+    <div class="kpi-card" style="--accent-color:#f87171"><div class="kpi-label">צרכי תגבור</div><div class="kpi-value" id="k5">—</div></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+    <button class="filter-btn active" onclick="setFilter('all',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">הכל</button>
+    <button class="filter-btn" onclick="setFilter('בביצוע',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">בביצוע</button>
+    <button class="filter-btn" onclick="setFilter('בעצירה',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">בעצירה</button>
+    <button class="filter-btn" onclick="setFilter('לקראת ביצוע',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">לקראת ביצוע</button>
+    <button class="filter-btn" onclick="setFilter('לקראת סיום',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">לקראת סיום</button>
+    <input id="searchBox" oninput="renderTable()" placeholder="חיפוש פרויקט..." style="background:#1e2340;border:1px solid #2d3561;color:#e8eaf6;padding:7px 14px;border-radius:16px;font-family:inherit;font-size:13px;margin-right:auto">
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>מנהל</th><th>שם פרויקט</th><th>צוות</th><th>סטטוס</th><th>סיום משוער</th><th>תגבור</th><th>הערות</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+const SUPABASE_URL='YOUR_SUPABASE_URL', SUPABASE_ANON_KEY='YOUR_SUPABASE_ANON_KEY';
+const db=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+let allProjects=[],currentFilter='all';
+const mgrColors={"יבגני":"#f59e0b","מיקי":"#34d399","עידן":"#60a5fa","בר":"#f87171","גוני":"#c084fc","ויקטור":"#fb923c","בחטיור":"#38bdf8","אלדור":"#a78bfa"};
+const statusBadge={"בביצוע":"badge-green","לקראת סיום":"badge-green","בעצירה":"badge-yellow","לקראת ביצוע":"badge-blue","בתכנון":"badge-gray"};
+
+async function init(){
+  const {data:{session}}=await db.auth.getSession();
+  if(!session){window.location.href='index.html';return;}
+  document.getElementById('userEmail').textContent=session.user.email;
+  const {data}=await db.from('projects').select('*').eq('is_active',true).order('manager');
+  allProjects=data||[];
+  document.getElementById('k1').textContent=allProjects.filter(p=>p.status==='בביצוע').length;
+  document.getElementById('k2').textContent=allProjects.filter(p=>p.status==='בעצירה').length;
+  document.getElementById('k3').textContent=allProjects.filter(p=>p.status==='לקראת ביצוע').length;
+  document.getElementById('k4').textContent=allProjects.filter(p=>p.status==='לקראת סיום').length;
+  document.getElementById('k5').textContent=allProjects.filter(p=>p.reinforce_needed&&p.reinforce_needed.trim()).length;
+  renderTable();
+}
+function setFilter(f,btn){
+  currentFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.style.background='#2d3561');
+  btn.style.background='#4a6fa5';
+  renderTable();
+}
+function renderTable(){
+  const q=(document.getElementById('searchBox').value||'').toLowerCase();
+  const list=allProjects.filter(p=>{
+    const matchFilter=currentFilter==='all'||p.status===currentFilter;
+    const matchSearch=!q||p.name?.toLowerCase().includes(q)||p.manager?.toLowerCase().includes(q);
+    return matchFilter&&matchSearch;
+  });
+  const mgr=p=>(p.manager||'').split(' - ')[0];
+  document.getElementById('tbody').innerHTML=list.map(p=>{
+    const m=mgr(p), c=mgrColors[m]||'#8892b0';
+    const bc=statusBadge[p.status]||'badge-gray';
+    return `<tr>
+      <td><span style="background:${c}22;color:${c};border:1px solid ${c}44;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">${m}</span></td>
+      <td style="font-weight:600;color:#e8eaf6">${p.name||''}</td>
+      <td style="font-size:12px;color:#8892b0">${p.team||'—'}</td>
+      <td><span class="badge ${bc}">${p.status||'—'}</span></td>
+      <td style="font-size:12px;white-space:nowrap">${p.end_date||'—'}</td>
+      <td>${p.reinforce_needed?'<span class="badge badge-red">⚠ '+p.reinforce_needed+'</span>':''}</td>
+      <td style="font-size:12px;color:#8892b0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.notes||''}">${p.notes||''}</td>
+    </tr>`;
+  }).join('');
+}
+async function signOut(){await db.auth.signOut();window.location.href='index.html';}
+init();
+</script>
+</body>
+</html>

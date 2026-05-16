@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קיובס | מתקינים</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-brand">🏗️ קיובס</div>
+  <nav class="topbar-nav">
+    <a class="nav-btn" href="app.html">🎯 פיקוד יומי</a>
+    <a class="nav-btn" href="projects.html">🏗️ פרויקטים</a>
+    <a class="nav-btn active" href="workers.html">👷 מתקינים</a>
+    <a class="nav-btn" href="alerts.html">🚨 התראות</a>
+    <a class="nav-btn" href="update.html">📝 דיווח שטח</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="user-badge" id="userEmail"></span>
+    <button class="logout-btn" onclick="signOut()">יציאה</button>
+  </div>
+</div>
+<div class="page">
+  <div class="kpi-row">
+    <div class="kpi-card" style="--accent-color:#4ade80"><div class="kpi-label">עובדי חברה</div><div class="kpi-value" id="k1">—</div></div>
+    <div class="kpi-card" style="--accent-color:#fbbf24"><div class="kpi-label">עצמאים</div><div class="kpi-value" id="k2">—</div></div>
+    <div class="kpi-card" style="--accent-color:#fb923c"><div class="kpi-label">קבלנים</div><div class="kpi-value" id="k3">—</div></div>
+    <div class="kpi-card" style="--accent-color:#f87171"><div class="kpi-label">ויזה פגה / קרובה</div><div class="kpi-value" id="k4">—</div></div>
+    <div class="kpi-card" style="--accent-color:#f87171"><div class="kpi-label">תעודת גובה פגה</div><div class="kpi-value" id="k5">—</div></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+    <button class="filter-btn active" onclick="setFilter('all',this)" style="background:#4a6fa5;border:none;color:#fff;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">הכל</button>
+    <button class="filter-btn" onclick="setFilter('חברה',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">עובדי חברה</button>
+    <button class="filter-btn" onclick="setFilter('עצמאי',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">עצמאים</button>
+    <button class="filter-btn" onclick="setFilter('קבלן',this)" style="background:#2d3561;border:none;color:#8892b0;padding:7px 16px;border-radius:16px;cursor:pointer;font-family:inherit;font-size:13px">קבלנים</button>
+    <input id="searchBox" oninput="renderTable()" placeholder="חיפוש..." style="background:#1e2340;border:1px solid #2d3561;color:#e8eaf6;padding:7px 14px;border-radius:16px;font-family:inherit;font-size:13px;margin-right:auto">
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>שם</th><th>טלפון</th><th>שיוך</th><th>ראש צוות</th><th>תפקיד</th><th>רישיון</th><th>פרויקט נוכחי</th><th>ויזה</th><th>גובה</th><th>הערות</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+const SUPABASE_URL='YOUR_SUPABASE_URL',SUPABASE_ANON_KEY='YOUR_SUPABASE_ANON_KEY';
+const db=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+let allWorkers=[],currentFilter='all';
+const empColors={"חברה":"#4ade80","עצמאי":"#fbbf24","קבלן":"#fb923c"};
+
+function daysLeft(dateStr){
+  if(!dateStr)return null;
+  return Math.round((new Date(dateStr)-new Date())/(1000*60*60*24));
+}
+function expiryBadge(dateStr){
+  const d=daysLeft(dateStr);
+  if(d===null)return '—';
+  if(d<0)return `<span class="badge badge-red">פג! (${d} ימים)</span>`;
+  if(d<=7)return `<span class="badge badge-red">${d} ימים</span>`;
+  if(d<=30)return `<span class="badge badge-yellow">${d} ימים</span>`;
+  return `<span class="badge badge-green">${d} ימים</span>`;
+}
+
+async function init(){
+  const {data:{session}}=await db.auth.getSession();
+  if(!session){window.location.href='index.html';return;}
+  document.getElementById('userEmail').textContent=session.user.email;
+  const {data}=await db.from('workers').select('*').eq('is_active',true).order('first_name');
+  allWorkers=data||[];
+  const today=new Date(), in30=new Date();in30.setDate(in30.getDate()+30);
+  document.getElementById('k1').textContent=allWorkers.filter(w=>w.employment_type==='חברה').length;
+  document.getElementById('k2').textContent=allWorkers.filter(w=>w.employment_type==='עצמאי').length;
+  document.getElementById('k3').textContent=allWorkers.filter(w=>(w.employment_type||'').includes('קבלן')).length;
+  document.getElementById('k4').textContent=allWorkers.filter(w=>w.visa_expiry&&new Date(w.visa_expiry)<=in30).length;
+  document.getElementById('k5').textContent=allWorkers.filter(w=>w.height_cert_expiry&&new Date(w.height_cert_expiry)<=in30).length;
+  renderTable();
+}
+function setFilter(f,btn){
+  currentFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>{b.style.background='#2d3561';b.style.color='#8892b0';});
+  btn.style.background='#4a6fa5';btn.style.color='#fff';
+  renderTable();
+}
+function renderTable(){
+  const q=(document.getElementById('searchBox').value||'').toLowerCase();
+  const list=allWorkers.filter(w=>{
+    const mf=currentFilter==='all'||(w.employment_type||'').includes(currentFilter);
+    const ms=!q||w.first_name?.toLowerCase().includes(q)||w.last_name?.toLowerCase().includes(q)||w.current_project?.toLowerCase().includes(q);
+    return mf&&ms;
+  });
+  document.getElementById('tbody').innerHTML=list.map(w=>{
+    const c=empColors[w.employment_type]||'#8892b0';
+    return `<tr>
+      <td style="font-weight:700">${w.first_name||''} ${w.last_name||''}</td>
+      <td style="font-size:12px;direction:ltr">${w.phone||'—'}</td>
+      <td><span style="background:${c}22;color:${c};border:1px solid ${c}44;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">${w.employment_type||'—'}</span></td>
+      <td style="font-size:12px">${w.team_leader||'—'}</td>
+      <td style="font-size:12px">${w.role||'—'}</td>
+      <td style="text-align:center">${w.has_license?'✓':'—'}</td>
+      <td style="font-size:12px;color:#8892b0;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.current_project||'—'}</td>
+      <td>${expiryBadge(w.visa_expiry)}</td>
+      <td>${expiryBadge(w.height_cert_expiry)}</td>
+      <td style="font-size:12px;color:#8892b0">${w.notes||''}</td>
+    </tr>`;
+  }).join('');
+}
+async function signOut(){await db.auth.signOut();window.location.href='index.html';}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קיובס | כניסה</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">🏗️</div>
+    <h1 class="login-title">קיובס</h1>
+    <p class="login-sub">מערכת ניהול כוח אדם ופרויקטים</p>
+    <div id="errorMsg" class="error-msg" style="display:none"></div>
+    <div class="form-group">
+      <label>אימייל</label>
+      <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label>סיסמה</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="doLogin()">כניסה</button>
+    <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:20px">קיובס חיפויים וגמר בנייה</p>
+  </div>
+</div>
+<script>
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// אם כבר מחובר → עבור לאפליקציה
+db.auth.getSession().then(({ data: { session } }) => {
+  if (session) window.location.href = 'app.html';
+});
+
+async function doLogin() {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const errEl = document.getElementById('errorMsg');
+  errEl.style.display = 'none';
+  if (!email || !password) { errEl.textContent = 'נא למלא אימייל וסיסמה'; errEl.style.display = 'block'; return; }
+  try {
+    const { error } = await db.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    window.location.href = 'app.html';
+  } catch(e) {
+    errEl.textContent = 'שגיאת כניסה: ' + (e.message || 'אנא בדוק פרטים');
+    errEl.style.display = 'block';
+  }
+}
+
+document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קיובס | התראות</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-brand">🏗️ קיובס</div>
+  <nav class="topbar-nav">
+    <a class="nav-btn" href="app.html">🎯 פיקוד יומי</a>
+    <a class="nav-btn" href="projects.html">🏗️ פרויקטים</a>
+    <a class="nav-btn" href="workers.html">👷 מתקינים</a>
+    <a class="nav-btn active" href="alerts.html">🚨 התראות</a>
+    <a class="nav-btn" href="update.html">📝 דיווח שטח</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="user-badge" id="userEmail"></span>
+    <button class="logout-btn" onclick="signOut()">יציאה</button>
+  </div>
+</div>
+<div class="page">
+  <div class="kpi-row">
+    <div class="kpi-card" style="--accent-color:#f87171"><div class="kpi-label">דחוף (עד 7 ימים)</div><div class="kpi-value" id="kUrgent">—</div></div>
+    <div class="kpi-card" style="--accent-color:#fbbf24"><div class="kpi-label">שים לב (עד 30 יום)</div><div class="kpi-value" id="kWarn">—</div></div>
+    <div class="kpi-card" style="--accent-color:#f87171"><div class="kpi-label">ויזות</div><div class="kpi-value" id="kVisa">—</div></div>
+    <div class="kpi-card" style="--accent-color:#fbbf24"><div class="kpi-label">תעודות גובה</div><div class="kpi-value" id="kHeight">—</div></div>
+    <div class="kpi-card" style="--accent-color:#f87171"><div class="kpi-label">פרויקטים בעצירה</div><div class="kpi-value" id="kStopped">—</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>🔴 התראות ויזות (30 יום)</h3>
+      <div id="visaAlerts"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+    <div class="card">
+      <h3>🟡 תעודות עבודה בגובה (30 יום)</h3>
+      <div id="heightAlerts"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🔴 פרויקטים בעצירה ובעיות שטח</h3>
+    <div id="stoppedProjects"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+
+  <div class="card">
+    <h3>⚠️ בקשות תגבור פתוחות</h3>
+    <div id="reinforceAlerts"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+</div>
+<script>
+const SUPABASE_URL='YOUR_SUPABASE_URL',SUPABASE_ANON_KEY='YOUR_SUPABASE_ANON_KEY';
+const db=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+function daysLeft(d){return d?Math.round((new Date(d)-new Date())/(1000*60*60*24)):null;}
+function fmtDate(d){if(!d)return'—';const dt=new Date(d);return dt.toLocaleDateString('he-IL');}
+
+async function init(){
+  const {data:{session}}=await db.auth.getSession();
+  if(!session){window.location.href='index.html';return;}
+  document.getElementById('userEmail').textContent=session.user.email;
+
+  const {data:workers}=await db.from('workers').select('*').eq('is_active',true);
+  const {data:projects}=await db.from('projects').select('*').eq('is_active',true);
+  const today=new Date(), in30=new Date();in30.setDate(in30.getDate()+30);
+
+  const visaList=(workers||[]).filter(w=>w.visa_expiry&&new Date(w.visa_expiry)<=in30).sort((a,b)=>new Date(a.visa_expiry)-new Date(b.visa_expiry));
+  const heightList=(workers||[]).filter(w=>w.height_cert_expiry&&new Date(w.height_cert_expiry)<=in30).sort((a,b)=>new Date(a.height_cert_expiry)-new Date(b.height_cert_expiry));
+  const stoppedList=(projects||[]).filter(p=>p.status==='בעצירה');
+  const reinforceList=(projects||[]).filter(p=>p.reinforce_needed&&p.reinforce_needed.trim());
+
+  const urgent=[...visaList,...heightList].filter(w=>{
+    const vd=daysLeft(w.visa_expiry), hd=daysLeft(w.height_cert_expiry);
+    return (vd!==null&&vd<=7)||(hd!==null&&hd<=7);
+  }).length;
+  const warn=visaList.length+heightList.length-urgent;
+
+  document.getElementById('kUrgent').textContent=urgent;
+  document.getElementById('kWarn').textContent=warn;
+  document.getElementById('kVisa').textContent=visaList.length;
+  document.getElementById('kHeight').textContent=heightList.length;
+  document.getElementById('kStopped').textContent=stoppedList.length;
+
+  function workerAlertItem(w,dateField){
+    const d=daysLeft(w[dateField]);
+    const isUrgent=d!==null&&d<=7;
+    const cls=isUrgent?'':'yellow';
+    return `<div class="alert-item ${cls}">
+      <div class="alert-title">${isUrgent?'🔴':'🟡'} ${w.first_name||''} ${w.last_name||''}</div>
+      <div class="alert-sub">
+        ${w.phone?'📞 '+w.phone+' | ':''}
+        תוקף: ${fmtDate(w[dateField])} | 
+        <strong>${d!==null?(d<=0?'פג לפני '+(d*-1)+' ימים':d+' ימים נותרו'):'—'}</strong>
+        ${w.current_project?' | '+w.current_project:''}
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('visaAlerts').innerHTML=visaList.length
+    ?visaList.map(w=>workerAlertItem(w,'visa_expiry')).join('')
+    :'<p style="color:var(--green);font-size:13px">✓ אין התראות ויזה</p>';
+
+  document.getElementById('heightAlerts').innerHTML=heightList.length
+    ?heightList.map(w=>workerAlertItem(w,'height_cert_expiry')).join('')
+    :'<p style="color:var(--green);font-size:13px">✓ אין התראות תעודת גובה</p>';
+
+  document.getElementById('stoppedProjects').innerHTML=stoppedList.length
+    ?stoppedList.map(p=>`<div class="alert-item"><div class="alert-title">🔴 ${p.name}</div><div class="alert-sub">${p.manager||''} ${p.notes?'| '+p.notes:''}</div></div>`).join('')
+    :'<p style="color:var(--green);font-size:13px">✓ אין פרויקטים בעצירה</p>';
+
+  document.getElementById('reinforceAlerts').innerHTML=reinforceList.length
+    ?reinforceList.map(p=>`<div class="alert-item yellow"><div class="alert-title">🟡 ${p.name}</div><div class="alert-sub">${p.manager||''} | ${p.reinforce_needed}</div></div>`).join('')
+    :'<p style="color:var(--green);font-size:13px">✓ אין בקשות תגבור פתוחות</p>';
+}
+async function signOut(){await db.auth.signOut();window.location.href='index.html';}
+init();
+</script>
+</body>
+</html>
